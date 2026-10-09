@@ -143,6 +143,40 @@ a.btn{text-decoration:none;display:inline-block}
 .login-form{display:grid;gap:4px;text-align:start;margin-top:14px}
 .gate .btn{width:100%}
 .gate p a{color:var(--brass)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-self:start}
+.ext{font-size:12px;font-weight:600;letter-spacing:.06em;color:var(--btn-fg);background:var(--btn-bg);border-radius:4px;padding:0 8px;line-height:22px}
+.file-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;margin:0 16px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.file-row.removed{opacity:.5;text-decoration:line-through}
+.file-row .fname{flex:1 1 160px;min-width:0;overflow-wrap:anywhere;font-weight:500}
+.file-row .fsize{color:var(--muted);font-size:13px}
+.field .file-row{margin:0 0 8px}
+input[type=file]{width:100%;font:inherit;color:var(--ink)}
+.linkbtn{background:none;border:0;color:var(--brass);font:inherit;cursor:pointer;text-decoration:underline;padding:4px}
+.gate-links{display:grid;gap:2px;margin-top:12px}
+.bar-actions{flex-wrap:wrap;justify-content:flex-end}
+select,input[type=number],input[type=tel]{width:100%;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:9px 12px}
+.chip.price{color:var(--btn-fg);background:var(--btn-bg);border-color:transparent;font-weight:600}
+.lock-block{margin:0 16px 10px}
+.lock-block .file-row{margin:0 0 8px}
+.lock-area{display:grid;gap:8px;justify-items:start}
+.lock-area .meta-line{margin:0}
+.panel.buy{margin:0 0 10px;width:100%}
+.pay-list{display:grid;gap:8px;margin-bottom:12px}
+.pay-item{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.pay-item span{overflow-wrap:anywhere;min-width:0}
+.order{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px 16px;display:grid;gap:10px}
+.order-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:8px}
+.order-head h3{margin:0;font-size:18px;font-family:var(--font-body);overflow-wrap:anywhere}
+.order-meta{color:var(--muted);font-size:14px;display:grid;gap:2px;overflow-wrap:anywhere}
+.order-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.order-acts input{flex:1 1 200px;min-width:0}
+.st{font-size:13px;border:1px solid var(--line);border-radius:999px;padding:0 10px;white-space:nowrap}
+.st.pending{color:var(--brass);border-color:var(--brass)}
+.st.approved{color:var(--ok);border-color:var(--ok)}
+.st.rejected{color:var(--danger);border-color:var(--danger)}
+:root{--ok:#2C7A4B}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ok:#6FCF97}}
+:root[data-theme="dark"]{--ok:#6FCF97}
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -167,8 +201,10 @@ var FIREBASE_CONFIG = {
   appId: "1:431989501510:web:e1310d9987cd06e3a96447",
   measurementId: "G-XX7YZQLSH3"
 };
-/* false = أي زائر يشوف الموقع، والمالك فقط يسجل دخول ويعدل. true = لا يُعرض الموقع إلا بعد تسجيل الدخول. */
-var REQUIRE_LOGIN_TO_VIEW = false;
+/* true = لا يُعرض الموقع ولا الملفات إلا بعد تسجيل الدخول (عملاء ومالك). false = العرض مفتوح للزوار. */
+var REQUIRE_LOGIN_TO_VIEW = true;
+/* السماح للعملاء بإنشاء حساب بأنفسهم من شاشة الدخول */
+var ALLOW_SIGNUP = true;
 /* ===== نهاية الإعدادات ===== */
 </script>
 <script>
@@ -215,7 +251,7 @@ function icon(name,cls){
 }
 
 /* ---------- state ---------- */
-var state={phase:"loading",db:null,auth:null,user:null,owner:false,items:[],loaded:false,office:{name:"مكتب للمحاماة والاستشارات القانونية",en:"Dr. Adv. Amr Abouzeid Abdelaziz",tagline:"استشارات وقضايا أمام مجلس الدولة والمحاكم المدنية والعمالية والجنائية"}};
+var state={phase:"loading",db:null,auth:null,user:null,owner:false,ownerChecked:false,purchases:{},orders:[],pay:{methods:[],note:""},payLoaded:false,items:[],loaded:false,office:{name:"مكتب للمحاماة والاستشارات القانونية",en:"Dr. Adv. Amr Abouzeid Abdelaziz",tagline:"استشارات وقضايا أمام مجلس الدولة والمحاكم المدنية والعمالية والجنائية"}};
 var current=(location.hash||"").slice(1)||"home";
 var listCtx=null, editingId=null, pendingRefresh=false, editingOffice=false, openIds={}, fid=0, toastTimer=null;
 var app=document.getElementById("app"), barEl=document.getElementById("bar"), view=document.getElementById("view"), toastEl=document.getElementById("toast");
@@ -266,6 +302,7 @@ function dbMsg(e){
  if(c==="permission-denied"||c==="unauthenticated")return "الإضافة والتعديل للمالك فقط. سجّل الدخول بحساب المالك.";
  if(c==="resource-exhausted")return "تم الوصول للحد اليومي المجاني، حاول لاحقًا.";
  if(c==="unavailable"||c==="deadline-exceeded")return "تعذر الحفظ الآن، حاول بعد قليل.";
+ if(c==="invalid-argument")return "حجم البيانات أكبر من المسموح.";
  return "تعذر الحفظ، حاول مرة أخرى.";
 }
 function countFor(sec,sub){
@@ -311,57 +348,88 @@ function renderBar(){
  mark.setAttribute("viewBox","0 0 24 24");mark.setAttribute("class","mark");mark.setAttribute("fill","none");
  mark.setAttribute("stroke","currentColor");mark.setAttribute("stroke-width","1.6");mark.setAttribute("stroke-linecap","round");mark.setAttribute("stroke-linejoin","round");
  mark.innerHTML=ICONS.civil;
- var role=state.phase==="ready"?h("span",{class:"chip-role"+(state.owner?" owner":""),text:state.owner?"المالك":"زائر"}):null;
- var act=null;
+ var role=state.phase==="ready"?h("span",{class:"chip-role"+(state.owner?" owner":""),text:state.owner?"المالك":(state.user?"عميل":"زائر")}):null;
+ var act=null, ordersLink=null;
+ if(state.phase==="ready"&&state.owner){
+  var pc=state.orders.filter(function(o){return o.status==="pending";}).length;
+  ordersLink=link("orders","btn small on-navy","الطلبات والدفع"+(pc?" ("+fmtNum(pc)+")":""));
+ }
  if(state.phase==="ready"&&state.auth){
-  act=state.owner?h("button",{type:"button",class:"btn small on-navy",text:"تسجيل الخروج",onclick:function(){state.auth.signOut();}}):link("login","btn small on-navy","دخول المالك");
+  act=state.user?h("button",{type:"button",class:"btn small on-navy",text:"تسجيل الخروج",onclick:function(){state.auth.signOut();}}):link("login","btn small on-navy","دخول");
  }
  barEl.replaceChildren(h("div",{class:"bar"},h("div",{class:"wrap"},
-  link("home","brand",[mark,h("span",{text:state.office.name})]),h("div",{class:"bar-actions"},role,act))));
+  link("home","brand",[mark,h("span",{text:state.office.name})]),h("div",{class:"bar-actions"},role,ordersLink,act))));
 }
 
 /* ---------- views ---------- */
 function route(){
  renderBar();
- listCtx=null;editingId=null;pendingRefresh=false;
+ listCtx=null;ordersCtx=null;editingId=null;pendingRefresh=false;
  if(state.phase==="loading"){view.replaceChildren(h("div",{class:"loading",text:"جارٍ التحميل…"}));return;}
  if(state.phase==="setup"){viewSetup();return;}
  if(state.phase==="gate"){viewLogin(true);return;}
- if(current==="login"){if(state.owner){go("home");return;}viewLogin(false);return;}
+ if(current==="orders"){
+  if(!state.ownerChecked){view.replaceChildren(h("div",{class:"loading",text:"جارٍ التحميل…"}));return;}
+  if(!state.owner){go("home");return;}
+  viewOrders();return;
+ }
+ if(current==="login"){if(state.owner||state.user){go("home");return;}viewLogin(false);return;}
  var r=parse(current);
  if(r.v==="home")viewHome();
  else if(r.v==="section")viewSection(r.sec);
  else viewList(r.sec,r.sub);
 }
+var loginMode="in";
 function authMsg(e){
  var c=e&&e.code;
  if(c==="auth/invalid-credential"||c==="auth/wrong-password"||c==="auth/user-not-found"||c==="auth/invalid-email")return "البريد أو كلمة المرور غير صحيحة.";
+ if(c==="auth/email-already-in-use")return "هذا البريد مسجل بالفعل، سجّل الدخول.";
+ if(c==="auth/weak-password")return "كلمة المرور ضعيفة، استخدم 6 أحرف على الأقل.";
+ if(c==="auth/operation-not-allowed")return "إنشاء الحسابات غير مفعّل حاليًا.";
  if(c==="auth/too-many-requests")return "محاولات كثيرة، حاول بعد قليل.";
  if(c==="auth/network-request-failed")return "تحقق من الاتصال بالإنترنت.";
- return "تعذر تسجيل الدخول، حاول مرة أخرى.";
+ return "تعذر إتمام العملية، حاول مرة أخرى.";
 }
 function viewLogin(required){
+ var canUp=window.ALLOW_SIGNUP!==false, up=canUp&&loginMode==="up";
  var email=h("input",{type:"email",id:"login-email",dir:"ltr",autocomplete:"username"});
- var pass=h("input",{type:"password",id:"login-pass",dir:"ltr",autocomplete:"current-password"});
+ var pass=h("input",{type:"password",id:"login-pass",dir:"ltr",autocomplete:up?"new-password":"current-password"});
+ var pass2=up?h("input",{type:"password",id:"login-pass2",dir:"ltr",autocomplete:"new-password"}):null;
  var err=h("div",{class:"err",role:"alert"});
- var btn=h("button",{type:"submit",class:"btn",text:"دخول"});
+ var btn=h("button",{type:"submit",class:"btn",text:up?"إنشاء الحساب":"دخول"});
  var form=h("form",{class:"login-form",novalidate:true},
   h("div",{class:"field"},h("label",{for:"login-email",text:"البريد الإلكتروني"}),email),
   h("div",{class:"field"},h("label",{for:"login-pass",text:"كلمة المرور"}),pass),
+  up?h("div",{class:"field"},h("label",{for:"login-pass2",text:"تأكيد كلمة المرور"}),pass2):null,
   err,btn);
  form.addEventListener("submit",function(e){
   e.preventDefault();err.textContent="";
   if(!email.value.trim()||!pass.value){err.textContent="اكتب البريد وكلمة المرور.";return;}
+  if(up){
+   if(pass.value.length<6){err.textContent="كلمة المرور 6 أحرف على الأقل.";return;}
+   if(pass.value!==pass2.value){err.textContent="كلمتا المرور غير متطابقتين.";return;}
+  }
   btn.disabled=true;
-  state.auth.signInWithEmailAndPassword(email.value.trim(),pass.value).catch(function(x){
-   btn.disabled=false;err.textContent=authMsg(x);
-  });
+  var call=up?state.auth.createUserWithEmailAndPassword(email.value.trim(),pass.value):state.auth.signInWithEmailAndPassword(email.value.trim(),pass.value);
+  call.catch(function(x){btn.disabled=false;err.textContent=authMsg(x);});
  });
+ var links=h("div",{class:"gate-links"});
+ if(!up){
+  links.append(h("button",{type:"button",class:"linkbtn",text:"نسيت كلمة المرور؟",onclick:function(){
+   if(!email.value.trim()){err.textContent="اكتب بريدك أولًا ثم اضغط «نسيت كلمة المرور».";email.focus();return;}
+   state.auth.sendPasswordResetEmail(email.value.trim()).then(function(){
+    err.textContent="";toast("إذا كان البريد مسجلًا فسيصلك رابط إعادة تعيين كلمة المرور.");
+   }).catch(function(x){err.textContent=x&&x.code==="auth/invalid-email"?"البريد غير صحيح.":"تعذر الإرسال، حاول لاحقًا.";});
+  }}));
+ }
+ if(canUp){
+  links.append(h("button",{type:"button",class:"linkbtn",text:up?"لديك حساب؟ تسجيل الدخول":"ليس لديك حساب؟ إنشاء حساب جديد",onclick:function(){loginMode=up?"in":"up";viewLogin(required);}}));
+ }
  view.replaceChildren(h("div",{class:"wrap"},h("div",{class:"gate"},
   icon("lock"),
-  h("h2",{text:required?"تسجيل الدخول مطلوب":"دخول المالك"}),
-  h("p",{text:required?"سجّل الدخول لعرض الموقع.":"الدخول للمالك فقط، لإضافة المحتوى وتعديله."}),
-  form,
+  h("h2",{text:up?"إنشاء حساب جديد":(required?"تسجيل الدخول مطلوب":"تسجيل الدخول")}),
+  h("p",{text:up?"أنشئ حسابك لعرض المحتوى وتحميل الملفات.":(required?"سجّل الدخول أو أنشئ حسابًا جديدًا لعرض الموقع والملفات.":"للعملاء والمالك.")}),
+  form,links,
   required?null:h("p",{},link("home","","العودة إلى الموقع")))));
 }
 function viewSetup(){
@@ -369,6 +437,113 @@ function viewSetup(){
   icon("lock"),
   h("h2",{text:"الموقع يحتاج إعداد Firebase"}),
   h("p",{text:"ضع بيانات مشروعك في الجزء الموجود أعلى السكريبت داخل ملف index.html، ثم اتبع الخطوات في ملف README."}))));
+}
+var ordersCtx=null, notesDraft={};
+var PAY_PRESETS=[
+ {k:"instapay",label:"إنستا باي (InstaPay)",hint:"عنوان الدفع IPA أو رقم الهاتف"},
+ {k:"vodafone",label:"فودافون كاش",hint:"رقم المحفظة"},
+ {k:"etisalat",label:"اتصالات كاش",hint:"رقم المحفظة"},
+ {k:"orange",label:"أورنج كاش",hint:"رقم المحفظة"},
+ {k:"bank",label:"تحويل بنكي",hint:"اسم البنك ورقم الحساب أو IBAN"},
+ {k:"fawry",label:"فوري",hint:"رقم الدفع أو الخدمة"}
+];
+function payPanel(){
+ var cur={};
+ (state.pay.methods||[]).forEach(function(m){cur[m.key||m.label]=m;});
+ var inputs={};
+ var f=h("form",{novalidate:true});
+ PAY_PRESETS.forEach(function(pr){
+  var inp=h("input",{type:"text",id:"pay-"+pr.k,dir:"ltr",placeholder:pr.hint,maxlength:"160",autocomplete:"off"});
+  if(cur[pr.k])inp.value=cur[pr.k].detail||"";
+  inputs[pr.k]=inp;
+  f.append(h("div",{class:"field"},h("label",{for:"pay-"+pr.k,text:pr.label}),inp));
+ });
+ var oL=h("input",{type:"text",id:"pay-ol",maxlength:"60",placeholder:"اسم طريقة أخرى (اختياري)"});
+ var oD=h("input",{type:"text",id:"pay-od",dir:"ltr",maxlength:"160",placeholder:"الرقم أو الحساب"});
+ if(cur.other){oL.value=cur.other.label||"";oD.value=cur.other.detail||"";}
+ var note=h("textarea",{id:"pay-note",maxlength:"500"});
+ note.style.minHeight="80px";note.value=state.pay.note||"";
+ f.append(
+  h("div",{class:"field"},h("label",{for:"pay-ol",text:"طريقة أخرى"}),oL,oD),
+  h("div",{class:"field"},h("label",{for:"pay-note",text:"تعليمات للعميل (اختياري)"}),note));
+ var save=h("button",{type:"submit",class:"btn",text:"حفظ طرق الدفع"});
+ f.append(h("div",{class:"form-actions"},save));
+ f.addEventListener("submit",function(e){
+  e.preventDefault();
+  var methods=[];
+  PAY_PRESETS.forEach(function(pr){var v=inputs[pr.k].value.trim();if(v)methods.push({key:pr.k,label:pr.label,detail:v});});
+  if(oL.value.trim()&&oD.value.trim())methods.push({key:"other",label:oL.value.trim(),detail:oD.value.trim()});
+  save.disabled=true;
+  state.db.doc("settings/payment").set({methods:methods,note:note.value.trim()}).then(function(){
+   toast("تم حفظ طرق الدفع");save.disabled=false;
+  }).catch(function(x){toast(dbMsg(x),true);save.disabled=false;});
+ });
+ return h("div",{class:"panel"},h("h3",{text:"طرق الدفع"}),
+  h("p",{class:"meta-line",text:"اكتب بيانات الحساب للطرق اللي بتقبلها فقط. الطرق الفاضية مش هتظهر للعملاء."}),f);
+}
+function viewOrders(){
+ var host=h("div",{class:"list"}), payHost=h("div");
+ ordersCtx={host:host,payHost:payHost};
+ view.replaceChildren(h("div",{class:"wrap"},
+  crumbs([{text:"الرئيسية",go:"home"},{text:"الطلبات والدفع"}]),
+  h("h1",{class:"page-title",text:"الطلبات والدفع"}),
+  h("p",{class:"lede",text:"راجع طلبات شراء الملفات ووافق عليها بعد التأكد من وصول المبلغ. وحدّد طرق الدفع اللي تظهر للعملاء."}),
+  payHost,
+  h("h2",{class:"sec-title",text:"طلبات الشراء"}),
+  host));
+ fillPay();
+ renderOrders();
+}
+function fillPay(){
+ if(!ordersCtx)return;
+ ordersCtx.payHost.replaceChildren(state.payLoaded?payPanel():h("div",{class:"loading",text:"جارٍ تحميل طرق الدفع…"}));
+}
+function renderOrders(){
+ if(!ordersCtx)return;
+ var host=ordersCtx.host;
+ var list=state.orders.slice().sort(function(a,b){
+  var ra=a.status==="pending"?0:1, rb=b.status==="pending"?0:1;
+  return ra-rb||(b.createdAt||0)-(a.createdAt||0);
+ });
+ host.replaceChildren();
+ if(!list.length){
+  host.append(h("div",{class:"empty"},h("strong",{text:"لا توجد طلبات شراء بعد"}),"هتظهر هنا طلبات العملاء لما يدفعوا."));
+  return;
+ }
+ list.forEach(function(o){host.append(orderRow(o));});
+}
+function orderRow(o){
+ var labels={pending:"بانتظار المراجعة",approved:"تمت الموافقة",rejected:"مرفوض"};
+ var noteIn=h("input",{type:"text",maxlength:"200",placeholder:"ملاحظة للعميل (اختياري)","aria-label":"ملاحظة للعميل"});
+ noteIn.value=notesDraft[o.id]!==undefined?notesDraft[o.id]:(o.note||"");
+ noteIn.addEventListener("input",function(){notesDraft[o.id]=noteIn.value;});
+ function setStatus(st,btn){
+  btn.disabled=true;
+  state.db.doc("purchases/"+o.id).update({status:st,note:noteIn.value.trim(),decidedAt:Date.now()}).then(function(){
+   delete notesDraft[o.id];
+   toast(st==="approved"?"تمت الموافقة، العميل يقدر يحمّل الملف الآن":"تم تحديث الطلب");
+  }).catch(function(x){toast(dbMsg(x),true);btn.disabled=false;});
+ }
+ var acts=h("div",{class:"order-acts"},noteIn);
+ if(o.status!=="approved"){
+  var ok=h("button",{type:"button",class:"btn small",text:"موافقة"});
+  ok.addEventListener("click",function(){setStatus("approved",ok);});
+  acts.append(ok);
+ }
+ if(o.status!=="rejected"){
+  var no=h("button",{type:"button",class:"btn danger small",text:o.status==="approved"?"سحب الإذن":"رفض"});
+  no.addEventListener("click",function(){setStatus("rejected",no);});
+  acts.append(no);
+ }
+ return h("article",{class:"order"},
+  h("div",{class:"order-head"},h("h3",{text:o.itemTitle||"ملف"}),h("span",{class:"chips"},h("span",{class:"chip price",text:fmtPrice(Number(o.price)||0)}),h("span",{class:"st "+o.status,text:labels[o.status]||o.status}))),
+  h("div",{class:"order-meta"},
+   h("span",{text:"العميل: "+(o.email||"غير معروف")}),
+   h("span",{text:"طريقة الدفع: "+(o.method||"-")}),
+   h("span",{text:"رقم العملية: "+(o.ref||"-")}),
+   o.phone?h("span",{text:"الهاتف: "+o.phone}):null,
+   h("span",{text:"التاريخ: "+fmtDate(o.createdAt)})),
+  acts);
 }
 function heroView(host){
  host.replaceChildren();
@@ -444,10 +619,14 @@ function viewList(sec,sub){
   addBtn.addEventListener("click",function(){
    if(formHost.childNodes.length){formHost.replaceChildren();addBtn.textContent="إضافة جديد";return;}
    formHost.append(h("div",{class:"panel"},h("h3",{text:"إضافة إلى: "+sub.title}),
-    entryForm(cfg,null,function(vals){
-     return state.db.collection("items").add({section:sec.key,sub:sub.key,title:vals.title,ref:vals.ref,body:vals.body,createdAt:Date.now()}).then(function(){
+    entryForm(cfg,null,function(vals,status){
+     var iref=state.db.collection("items").doc();
+     var doc={section:sec.key,sub:sub.key,title:vals.title,ref:vals.ref,body:vals.body,price:vals.price,createdAt:Date.now()};
+     var p=Promise.resolve();
+     if(vals.file)p=uploadFile(vals.file,iref.id,function(i,n){status("جارٍ رفع الملف "+fmtNum(i)+" من "+fmtNum(n));}).then(function(f){doc.file=f;});
+     return p.then(function(){status("جارٍ الحفظ…");return iref.set(doc);}).then(function(){
       formHost.replaceChildren();addBtn.textContent="إضافة جديد";toast("تمت الإضافة");
-     });
+     },function(e){if(doc.file)deleteFileParts(doc.file,iref.id).catch(function(){});throw e;});
     },function(){formHost.replaceChildren();addBtn.textContent="إضافة جديد";})));
    addBtn.textContent="إغلاق النموذج";
    var f=formHost.querySelector("input[type=text]"); if(f)f.focus();
@@ -480,17 +659,165 @@ function renderList(){
  }
  shown.forEach(function(it){c.listHost.append(itemCard(it,c.cfg));});
 }
+/* ---------- files (stored in Firestore as base64 chunks) ---------- */
+var MAX_FILE=8*1024*1024, CHUNK=600*1024, ACCEPT=".pdf,.doc,.docx,.xls,.xlsx";
+var ALLOWED_EXT=["pdf","doc","docx","xls","xlsx"];
+var MIME={pdf:"application/pdf",doc:"application/msword",docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",xls:"application/vnd.ms-excel",xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"};
+function extOf(name){var m=/\.([A-Za-z0-9]+)$/.exec(name||"");return m?m[1].toLowerCase():"";}
+function fmtSize(b){
+ if(b<1048576)return Number(Math.max(1,Math.round(b/1024))).toLocaleString("ar-EG")+" ك.ب";
+ return Number(b/1048576).toLocaleString("ar-EG",{maximumFractionDigits:1})+" م.ب";
+}
+function extChip(f){return h("span",{class:"ext",text:(extOf(f.name)||"ملف").toUpperCase()});}
+function readB64(blob){
+ return new Promise(function(res,rej){
+  var r=new FileReader();
+  r.onload=function(){var x=String(r.result);res(x.slice(x.indexOf(",")+1));};
+  r.onerror=function(){rej(r.error||new Error("read"));};
+  r.readAsDataURL(blob);
+ });
+}
+function b64ToBytes(b){
+ var bin=atob(b), n=bin.length, u=new Uint8Array(n);
+ for(var i=0;i<n;i++)u[i]=bin.charCodeAt(i);
+ return u;
+}
+function priceOf(it){var p=Number(it&&it.price);return p>0?p:0;}
+function fmtPrice(p){return Number(p).toLocaleString("ar-EG")+" جنيه";}
+function partRef(itemId,fid,i){return state.db.collection("files").doc(itemId).collection("parts").doc(fid+"_"+i);}
+function deleteFileParts(f,itemId){
+ var b=state.db.batch();
+ for(var i=0;i<f.chunks;i++)b.delete(partRef(itemId,f.id,i));
+ return b.commit();
+}
+function uploadFile(file,itemId,onProgress){
+ var fid=state.db.collection("files").doc().id, n=Math.max(1,Math.ceil(file.size/CHUNK));
+ var meta={id:fid,name:file.name,size:file.size,chunks:n};
+ var p=Promise.resolve();
+ for(var i=0;i<n;i++){
+  (function(i){
+   p=p.then(function(){return readB64(file.slice(i*CHUNK,(i+1)*CHUNK));})
+    .then(function(b64){return partRef(itemId,fid,i).set({fid:fid,i:i,data:b64});})
+    .then(function(){if(onProgress)onProgress(i+1,n);});
+  })(i);
+ }
+ return p.then(function(){return meta;},function(e){deleteFileParts(meta,itemId).catch(function(){});throw e;});
+}
+function downloadFile(f,itemId){
+ var reads=[];
+ for(var i=0;i<f.chunks;i++)reads.push(partRef(itemId,f.id,i).get());
+ return Promise.all(reads).then(function(snaps){
+  var parts=snaps.map(function(sn){
+   if(!sn.exists)throw new Error("missing");
+   return b64ToBytes(sn.data().data);
+  });
+  var blob=new Blob(parts,{type:MIME[extOf(f.name)]||"application/octet-stream"});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  a.href=url;a.download=f.name;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},60000);
+ });
+}
+function fileRow(f,itemId){
+ var btn=h("button",{type:"button",class:"btn small",text:"تحميل"});
+ btn.addEventListener("click",function(){
+  btn.disabled=true;btn.textContent="جارٍ التحميل…";
+  downloadFile(f,itemId).catch(function(){toast("تعذر تحميل الملف، حاول مرة أخرى.",true);}).then(function(){btn.disabled=false;btn.textContent="تحميل";});
+ });
+ return h("div",{class:"file-row"},extChip(f),h("span",{class:"fname",text:f.name}),h("span",{class:"fsize",text:fmtSize(f.size)}),btn);
+}
+
+/* ---------- purchase ---------- */
+function copyText(t){
+ if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(t);
+ return Promise.reject(new Error("noclip"));
+}
+function canAccess(it){
+ if(state.owner)return true;
+ if(priceOf(it)===0)return true;
+ var pu=state.purchases[it.id];
+ return !!(pu&&pu.status==="approved");
+}
+function buyPanel(it,onClose){
+ var price=priceOf(it), methods=state.pay.methods||[];
+ var wrap=h("div",{class:"panel buy"});
+ wrap.append(h("h3",{text:"شراء: "+it.title}),h("p",{class:"meta-line",text:"المبلغ المطلوب: "+fmtPrice(price)+". حوّل المبلغ بإحدى الطرق التالية، ثم اكتب رقم العملية."}));
+ var list=h("div",{class:"pay-list"});
+ methods.forEach(function(m){
+  var cp=h("button",{type:"button",class:"btn ghost small",text:"نسخ"});
+  cp.addEventListener("click",function(){
+   copyText(m.detail).then(function(){toast("تم النسخ");}).catch(function(){toast("انسخ الرقم يدويًا",true);});
+  });
+  list.append(h("div",{class:"pay-item"},h("span",{},h("b",{text:m.label}),": ",h("span",{dir:"ltr",text:m.detail})),cp));
+ });
+ if(!methods.length)list.append(h("p",{class:"err",text:"لم يضف المكتب طرق الدفع بعد. تواصل مع المكتب."}));
+ wrap.append(list);
+ if(state.pay.note)wrap.append(h("p",{class:"meta-line",text:state.pay.note}));
+ var id="b"+(++fid);
+ var sel=h("select",{id:id+"m"});
+ methods.forEach(function(m){sel.append(h("option",{value:m.label,text:m.label}));});
+ var ref=h("input",{type:"text",id:id+"r",dir:"ltr",maxlength:"60",autocomplete:"off"});
+ var phone=h("input",{type:"tel",id:id+"p",dir:"ltr",maxlength:"20",autocomplete:"tel"});
+ var err=h("div",{class:"err",role:"alert"});
+ var btn=h("button",{type:"submit",class:"btn",text:"إرسال طلب الدفع"});
+ if(!methods.length)btn.disabled=true;
+ var cancel=h("button",{type:"button",class:"btn ghost",text:"إلغاء",onclick:onClose});
+ var form=h("form",{novalidate:true},
+  h("div",{class:"field"},h("label",{for:id+"m",text:"طريقة الدفع التي استخدمتها"}),sel),
+  h("div",{class:"field"},h("label",{for:id+"r",text:"رقم العملية أو المرجع"}),ref),
+  h("div",{class:"field"},h("label",{for:id+"p",text:"رقم هاتفك (اختياري)"}),phone),
+  err,h("div",{class:"form-actions"},btn,cancel));
+ form.addEventListener("submit",function(e){
+  e.preventDefault();err.textContent="";
+  if(ref.value.trim().length<4){err.textContent="اكتب رقم العملية (4 أحرف أو أرقام على الأقل).";ref.focus();return;}
+  if(!state.user)return;
+  btn.disabled=true;cancel.disabled=true;
+  var uid=state.user.uid;
+  state.db.doc("purchases/"+uid+"_"+it.id).set({uid:uid,email:state.user.email||"",itemId:it.id,itemTitle:it.title,price:price,method:sel.value,ref:ref.value.trim(),phone:phone.value.trim(),status:"pending",createdAt:Date.now()}).then(function(){
+   toast("تم إرسال طلب الدفع، سيراجعه المكتب.");onClose();
+  }).catch(function(){
+   toast("تعذر إرسال الطلب، حاول مرة أخرى.",true);btn.disabled=false;cancel.disabled=false;
+  });
+ });
+ wrap.append(form);
+ return wrap;
+}
+function lockBlock(it){
+ var pu=state.purchases[it.id], price=priceOf(it);
+ var box=h("div",{class:"lock-block"});
+ box.append(h("div",{class:"file-row"},extChip(it.file),h("span",{class:"fname",text:it.file.name}),h("span",{class:"fsize",text:fmtSize(it.file.size)}),h("span",{class:"chip price",text:fmtPrice(price)})));
+ var area=h("div",{class:"lock-area"});
+ box.append(area);
+ function showBuy(){
+  editingId="buy:"+it.id;
+  area.replaceChildren(buyPanel(it,function(){editingId=null;pendingRefresh=false;renderList();}));
+ }
+ if(!pu){
+  area.append(h("p",{class:"meta-line",text:"هذا الملف مدفوع. اشتره لتفعيل التحميل."}),h("button",{type:"button",class:"btn",text:"شراء الملف",onclick:showBuy}));
+ }else if(pu.status==="pending"){
+  area.append(h("p",{class:"meta-line",text:"تم إرسال طلب الدفع وهو قيد المراجعة. سيظهر زر التحميل بعد موافقة المكتب."}));
+ }else{
+  area.append(h("p",{class:"err",text:"تم رفض طلب الدفع"+(pu.note?": "+pu.note:".")}),h("button",{type:"button",class:"btn",text:"إرسال طلب جديد",onclick:showBuy}));
+ }
+ return box;
+}
+
+/* ---------- entry card ---------- */
 function itemCard(it,cfg){
  var d=h("details",{class:"item"});
+ var price=priceOf(it);
  if(openIds[it.id])d.open=true;
  d.addEventListener("toggle",function(){if(d.open)openIds[it.id]=1;else delete openIds[it.id];});
- var prev=it.body.replace(/\s+/g," ").trim();
+ var prev=(it.body||"").replace(/\s+/g," ").trim();
+ if(!prev&&it.file)prev="ملف مرفق: "+it.file.name;
  if(prev.length>150)prev=prev.slice(0,150)+"…";
  d.append(h("summary",{},h("div",{class:"sum-main"},
   h("span",{class:"item-title",text:it.title}),
-  it.ref?h("span",{class:"chip",text:it.ref}):null,
+  (it.ref||it.file||price)?h("span",{class:"chips"},it.ref?h("span",{class:"chip",text:it.ref}):null,it.file?extChip(it.file):null,price?h("span",{class:"chip price",text:fmtPrice(price)}):null):null,
   h("p",{class:"preview",text:prev}))));
- d.append(h("div",{class:"item-body",text:it.body}));
+ if(it.file)d.append(h("div",{style:"padding-top:4px"},canAccess(it)?fileRow(it.file,it.id):lockBlock(it)));
+ if(it.body)d.append(h("div",{class:"item-body",text:it.body}));
  var foot=h("div",{class:"item-foot"},h("span",{text:"أُضيف في "+fmtDate(it.createdAt)}));
  if(state.owner){
   var edit=h("button",{type:"button",class:"btn ghost small",text:"تعديل"});
@@ -501,14 +828,23 @@ function itemCard(it,cfg){
     del.textContent="تأكيد الحذف";armed=setTimeout(function(){armed=null;del.textContent="حذف";},4000);return;
    }
    clearTimeout(armed);del.disabled=true;
-   state.db.doc("items/"+it.id).delete().then(function(){toast("تم الحذف");}).catch(function(e){toast(dbMsg(e),true);del.disabled=false;del.textContent="حذف";armed=null;});
+   state.db.doc("items/"+it.id).delete().then(function(){
+    if(it.file)deleteFileParts(it.file,it.id).catch(function(){});
+    toast("تم الحذف");
+   }).catch(function(e){toast(dbMsg(e),true);del.disabled=false;del.textContent="حذف";armed=null;});
   });
   edit.addEventListener("click",function(){
    editingId=it.id;
    var host=h("div",{class:"edit-host"});
-   function close(){editingId=null;if(pendingRefresh){pendingRefresh=false;}renderList();}
-   host.append(entryForm(cfg,it,function(vals){
-    return state.db.doc("items/"+it.id).update({title:vals.title,ref:vals.ref,body:vals.body,updatedAt:Date.now()}).then(function(){toast("تم حفظ التعديل");close();});
+   function close(){editingId=null;pendingRefresh=false;renderList();}
+   host.append(entryForm(cfg,it,function(vals,status){
+    var upd={title:vals.title,ref:vals.ref,body:vals.body,price:vals.price,updatedAt:Date.now()}, nf=null, p=Promise.resolve();
+    if(vals.file)p=uploadFile(vals.file,it.id,function(i,n){status("جارٍ رفع الملف "+fmtNum(i)+" من "+fmtNum(n));}).then(function(f){nf=f;upd.file=f;});
+    else if(vals.removeFile&&it.file)upd.file=window.firebase.firestore.FieldValue.delete();
+    return p.then(function(){status("جارٍ الحفظ…");return state.db.doc("items/"+it.id).update(upd);}).then(function(){
+     if(it.file&&(vals.file||vals.removeFile))deleteFileParts(it.file,it.id).catch(function(){});
+     toast("تم حفظ التعديل");close();
+    },function(e){if(nf)deleteFileParts(nf,it.id).catch(function(){});throw e;});
    },close));
    d.replaceChildren(host);
    var f=host.querySelector("input[type=text]"); if(f)f.focus();
@@ -520,15 +856,37 @@ function itemCard(it,cfg){
 }
 
 /* ---------- entry form with field checks ---------- */
-var MAX_TITLE=200, MAX_REF=120, MAX_BODY=30000;
+var MAX_TITLE=200, MAX_REF=120, MAX_BODY=30000, MAX_PRICE=1000000;
 function entryForm(cfg,init,onSave,onCancel){
  var id="f"+(++fid);
  var title=h("input",{type:"text",id:id+"t",maxlength:String(MAX_TITLE),autocomplete:"off"});
  var ref=h("input",{type:"text",id:id+"r",maxlength:String(MAX_REF),placeholder:cfg.refHint,autocomplete:"off"});
  var body=h("textarea",{id:id+"b",maxlength:String(MAX_BODY)});
+ var priceIn=h("input",{type:"number",id:id+"p",min:"0",max:String(MAX_PRICE),step:"1",inputmode:"numeric",dir:"ltr"});
+ var fileIn=h("input",{type:"file",id:id+"f",accept:ACCEPT});
+ priceIn.value=init&&priceOf(init)?String(priceOf(init)):"0";
  if(init){title.value=init.title||"";ref.value=init.ref||"";body.value=init.body||"";}
- var eT=h("div",{class:"err",role:"alert"}), eB=h("div",{class:"err",role:"alert"});
+ var eT=h("div",{class:"err",role:"alert"}), eB=h("div",{class:"err",role:"alert"}), eF=h("div",{class:"err",role:"alert"}), eP=h("div",{class:"err",role:"alert"});
  var cT=h("span"), cB=h("span");
+ var curFile=init&&init.file?init.file:null, removed=false, curRow=null;
+ var fieldFile=h("div",{class:"field"},h("label",{for:id+"f",text:"ملف مرفق (اختياري)"}));
+ if(curFile){
+  var rm=h("button",{type:"button",class:"btn ghost small",text:"إزالة الملف الحالي"});
+  curRow=h("div",{class:"file-row"},extChip(curFile),h("span",{class:"fname",text:curFile.name}),h("span",{class:"fsize",text:fmtSize(curFile.size)}),rm);
+  rm.addEventListener("click",function(){
+   removed=!removed;
+   rm.textContent=removed?"تراجع عن الإزالة":"إزالة الملف الحالي";
+   curRow.classList.toggle("removed",removed);
+   if(eB.textContent)checkBody();
+   if(eP.textContent)checkPrice();
+  });
+  fieldFile.append(curRow);
+ }
+ fieldFile.append(fileIn,h("div",{class:"hint"},eF,h("span",{text:"Word أو Excel أو PDF، حتى "+fmtNum(MAX_FILE/1048576)+" ميجابايت"})));
+ var fieldPrice=h("div",{class:"field"},h("label",{for:id+"p",text:"سعر الملف بالجنيه المصري"}),priceIn,
+  h("div",{class:"hint"},eP,h("span",{text:"اترك 0 لو الملف مجاني. السعر يخص الملف المرفق فقط، والنص يظهر للجميع."})));
+ function hasFile(){return !!((fileIn.files&&fileIn.files[0])||(curFile&&!removed));}
+ function priceVal(){var t=priceIn.value.trim();return t===""?0:Number(t);}
  function grow(){body.style.height="auto";body.style.height=Math.min(body.scrollHeight+4,520)+"px";}
  function counts(){
   cT.textContent=fmtNum(title.value.length)+" / "+fmtNum(MAX_TITLE);
@@ -541,30 +899,55 @@ function entryForm(cfg,init,onSave,onCancel){
   return ok;
  }
  function checkBody(){
-  var ok=body.value.trim().length>=5;
-  eB.textContent=ok?"":"اكتب "+cfg.bodyLabel+" (خمسة أحرف على الأقل).";
+  var ok=body.value.trim().length>=5||hasFile();
+  eB.textContent=ok?"":"اكتب "+cfg.bodyLabel+" (خمسة أحرف على الأقل) أو أرفق ملفًا.";
   body.setAttribute("aria-invalid",ok?"false":"true");
   return ok;
  }
+ function checkFile(){
+  var f=fileIn.files&&fileIn.files[0], msg="";
+  if(f){
+   if(ALLOWED_EXT.indexOf(extOf(f.name))<0)msg="الملفات المسموحة: Word وExcel وPDF فقط.";
+   else if(f.size===0)msg="الملف فارغ.";
+   else if(f.size>MAX_FILE)msg="حجم الملف أكبر من "+fmtNum(MAX_FILE/1048576)+" ميجابايت.";
+  }
+  eF.textContent=msg;
+  return !msg;
+ }
+ function checkPrice(){
+  var v=priceVal(), msg="";
+  if(!isFinite(v)||v<0||Math.floor(v)!==v||v>MAX_PRICE)msg="اكتب سعرًا بالجنيه بدون كسور (من 0 إلى "+fmtNum(MAX_PRICE)+").";
+  else if(v>0&&!hasFile())msg="السعر يحتاج ملفًا مرفقًا. أرفق ملفًا أو اجعل السعر 0.";
+  eP.textContent=msg;
+  priceIn.setAttribute("aria-invalid",msg?"true":"false");
+  return !msg;
+ }
  title.addEventListener("input",function(){counts();if(eT.textContent)checkTitle();});
  body.addEventListener("input",function(){counts();grow();if(eB.textContent)checkBody();});
+ priceIn.addEventListener("input",function(){if(eP.textContent)checkPrice();});
  title.addEventListener("blur",function(){if(title.value)checkTitle();});
  body.addEventListener("blur",function(){if(body.value)checkBody();});
+ fileIn.addEventListener("change",function(){checkFile();if(eB.textContent)checkBody();if(eP.textContent)checkPrice();});
  var save=h("button",{type:"submit",class:"btn",text:init?"حفظ التعديل":"حفظ"});
  var cancel=h("button",{type:"button",class:"btn ghost",text:"إلغاء",onclick:onCancel});
+ var saveLabel=save.textContent;
  var form=h("form",{novalidate:true},
   h("div",{class:"field"},h("label",{for:id+"t",text:cfg.titleLabel}),title,h("div",{class:"hint"},eT,cT)),
   h("div",{class:"field"},h("label",{for:id+"r",text:cfg.refLabel+" (اختياري)"}),ref),
   h("div",{class:"field"},h("label",{for:id+"b",text:cfg.bodyLabel}),body,h("div",{class:"hint"},eB,cB)),
+  fieldFile,fieldPrice,
   h("div",{class:"form-actions"},save,cancel));
  form.addEventListener("submit",function(e){
   e.preventDefault();
-  var a=checkTitle(), b=checkBody();
+  var a=checkTitle(), c=checkFile(), b=checkBody(), pr=checkPrice();
   if(!a){title.focus();return;}
   if(!b){body.focus();return;}
-  save.disabled=true;
-  onSave({title:title.value.trim(),ref:ref.value.trim(),body:body.value.trim()}).catch(function(err){
-   toast(dbMsg(err),true);save.disabled=false;
+  if(!c){fileIn.focus();return;}
+  if(!pr){priceIn.focus();return;}
+  save.disabled=true;cancel.disabled=true;
+  var f=fileIn.files&&fileIn.files[0]?fileIn.files[0]:null;
+  onSave({title:title.value.trim(),ref:ref.value.trim(),body:body.value.trim(),price:priceVal(),file:f,removeFile:removed&&!f},function(t){save.textContent=t;}).catch(function(err){
+   toast(dbMsg(err),true);save.disabled=false;cancel.disabled=false;save.textContent=saveLabel;
   });
  });
  counts();
@@ -575,6 +958,7 @@ function entryForm(cfg,init,onSave,onCancel){
 /* ---------- live data ---------- */
 function refresh(){
  if(state.phase!=="ready")return;
+ if(current==="orders"){if(state.owner)renderOrders();return;}
  var r=parse(current);
  if(r.v==="list")renderList();
  else if(!editingOffice)route();
@@ -590,7 +974,7 @@ function start(){
  var unsubs=[];
  function unsubscribe(){
   unsubs.forEach(function(u){try{u();}catch(e){}});
-  unsubs=[];state.loaded=false;state.items=[];
+  unsubs=[];state.loaded=false;state.items=[];state.purchases={};state.orders=[];state.payLoaded=false;
  }
  function subscribe(){
   unsubscribe();
@@ -607,14 +991,51 @@ function start(){
     if(o&&typeof o.en==="string")state.office.en=o.en;
    }
    renderBar();
-   if(parse(current).v==="home"&&current!=="login"&&!editingOffice&&state.phase==="ready")route();
+   if(parse(current).v==="home"&&current!=="login"&&current!=="orders"&&!editingOffice&&state.phase==="ready")route();
   },function(){}));
+  unsubs.push(state.db.doc("settings/payment").onSnapshot(function(sn){
+   var o=sn.exists?sn.data():null, first=!state.payLoaded;
+   state.pay={
+    methods:o&&Array.isArray(o.methods)?o.methods.filter(function(m){return m&&typeof m.label==="string"&&typeof m.detail==="string";}):[],
+    note:o&&typeof o.note==="string"?o.note:""
+   };
+   state.payLoaded=true;
+   if(first&&current==="orders")fillPay();
+   else if(current!=="orders")refresh();
+  },function(){state.payLoaded=true;if(current==="orders")fillPay();}));
+  if(state.user){
+   unsubs.push(state.db.collection("purchases").where("uid","==",state.user.uid).onSnapshot(function(snap){
+    var m={};
+    snap.docs.forEach(function(d){var x=d.data()||{};if(x.itemId)m[x.itemId]=x;});
+    state.purchases=m;
+    refresh();
+   },function(){}));
+  }
  }
+ var pingSeq=0;
  state.auth.onAuthStateChanged(function(u){
-  state.user=u;state.owner=!!u;
+  state.user=u;state.owner=false;state.ownerChecked=false;
+  var seq=++pingSeq;
   if(require&&!u){unsubscribe();state.phase="gate";route();return;}
   state.phase="ready";
   subscribe();
+  if(u){
+   /* القواعد تسمح بالكتابة للمالك فقط، فنجاح هذه الكتابة يعني أن الحساب هو حساب المالك */
+   state.db.doc("settings/ping").set({t:Date.now()}).then(function(){
+    if(seq!==pingSeq)return;
+    state.owner=true;state.ownerChecked=true;
+    unsubs.push(state.db.collection("purchases").onSnapshot(function(snap){
+     state.orders=snap.docs.map(function(d){var x=d.data()||{};x.id=d.id;return x;});
+     renderBar();
+     if(current==="orders")renderOrders();
+    },function(){}));
+    route();
+   }).catch(function(){
+    if(seq!==pingSeq)return;
+    state.ownerChecked=true;
+    if(current==="orders")route();
+   });
+  }else{state.ownerChecked=true;}
   if(current==="login"&&u){go("home");return;}
   route();
  });
